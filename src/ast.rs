@@ -312,13 +312,36 @@ impl Visitable for Function<'_> {
 #[derive(Debug, Clone)]
 pub struct FnOrMarkupOption<'a> {
   pub key: Identifier<'a>,
-  pub value: LiteralOrVariable<'a>,
+  pub value: FnOrMarkupOptionValue<'a>,
+}
+
+#[derive(Clone)]
+pub enum FnOrMarkupOptionValue<'a> {
+  Present(LiteralOrVariable<'a>),
+  MissingAfterEquals(Location),
+  MissingEquals,
+}
+
+impl Debug for FnOrMarkupOptionValue<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Present(value) => Debug::fmt(value, f),
+      Self::MissingAfterEquals(location) => {
+        write!(f, "<missing after equals at {:?}>", location)
+      }
+      Self::MissingEquals => write!(f, "<missing equals>"),
+    }
+  }
 }
 
 impl Spanned for FnOrMarkupOption<'_> {
   fn span(&self) -> Span {
     let start = self.key.span().start;
-    let end = self.value.span().end;
+    let end = match &self.value {
+      FnOrMarkupOptionValue::Present(value) => value.span().end,
+      FnOrMarkupOptionValue::MissingAfterEquals(location) => *location + '=',
+      FnOrMarkupOptionValue::MissingEquals => self.key.span().end,
+    };
     Span::new(start..end)
   }
 }
@@ -330,7 +353,9 @@ impl Visitable for FnOrMarkupOption<'_> {
 
   fn apply_visitor_to_children<V: Visit + ?Sized>(&self, visitor: &mut V) {
     self.key.apply_visitor(visitor);
-    self.value.apply_visitor(visitor);
+    if let FnOrMarkupOptionValue::Present(value) = &self.value {
+      value.apply_visitor(visitor);
+    }
   }
 }
 
